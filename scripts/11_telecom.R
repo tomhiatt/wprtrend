@@ -17,6 +17,57 @@ library(stringr)
 options(stringsAsFactors = FALSE)
 
 # telecom data
+# ITU summary indicators
+## Key ICT indicators for the ITU/BDT regions (totals and penetration rates)
+## 2018 is estimated. 
+
+## variables
+ituc <- data.frame(
+  name = c(
+    "Fixed-telephone subscriptions", 
+    "Mobile-cellular telephone subscriptions",
+    "Active mobile-broadband subscriptions",
+    "Fixed broadband subscriptions",
+    "Households with a computer",
+    "Households with Internet access at home",
+    "Individuals using the Internet"), 
+  code = c(
+    "fixd.tel", 
+    "mob.tel",
+    "mob.brnd",
+    "fixd.brnd",
+    "hh.comp",
+    "hh.internet",
+    "indiv.internet"
+  )
+)
+
+itua <- read.xlsx("data/Telecom/ITU_Key_2005-2018_ICT_data_with LDCs_rev27Nov2018.xls", 1, startRow = 56, rowIndex = c(56, 57:63, 64, 66:72, 74:80, 82:87, 91:98, 100:106, 108:113), colIndex = c(1, 16:29)) %>% rename(Region=NA.) %>% 
+  mutate(var=c(
+    rep(ituc$code[1],7),
+    rep(ituc$code[2],7),
+    rep(ituc$code[3],7),
+    rep(ituc$code[4],7),
+    rep(ituc$code[5],7),    
+    rep(ituc$code[6],7),    
+    rep(ituc$code[7],7)
+  ))
+  
+   ### Test to see if coding is right 
+itud <- itua %>% filter(is.na(X2018.)) %>% select(name=Region, code=var)
+if (!identical(itud, ituc)) print("All is NOT well!")
+
+itub <- itua %>% gather(yr, value, -Region, -var) %>% filter(!is.na(Region)) %>% transmute(Region, year=as.numeric(str_extract(yr, "[0-9]+")), var, value=as.numeric(value)) %>% filter(!is.na(value)) %>% spread(var, value)
+
+## Plot
+itub %>% select(Region, year, ituc$code[1:4]) %>% gather(code, value, -Region, -year) %>% inner_join(ituc) %>% ggplot(aes(year, value, color=Region, group=Region)) + facet_wrap(~name, scales = "free_y") + geom_line(size=1) + labs(x="", y="Per 100 inhabitants", title="Key ICT indicators for the ITU/BDT regions, 2005-2018", subtitle="* values for 2018 are estimated. \nCIS=Commonwealth of Independent States (formed when the former Soviet Union dissolved).")
+
+itub %>% select(Region, year, ituc$code[5:7]) %>% gather(code, value, -Region, -year) %>% inner_join(ituc) %>% 
+  ggplot(aes(year, value, color=Region, group=Region) ) + facet_wrap(~name, scales = "free_y", nrow=2) + geom_line(size=1) + labs(x="", y="%")
+
+
+
+# Fixed broadband data
 dta <- read.xlsx("data/Telecom/Fixed_broadband_2000-2017.xls", 1, startRow = 2, colIndex = c(1:19,21:38)) %>% rename(country=NA.) 
 
 # Add in iso code
@@ -53,124 +104,14 @@ reg.1 %>% summarise(fxbrnd=sum(fxbrnd, na.rm=T), pop=sum(pop, na.rm=T)) %>% muta
 reg.1 %>% bind_rows(reg.2) %>% 
   ggplot(aes(year, fxbrnd.100, color=WHO_Region)) + geom_line()
 
+dtc %>% filter(WHO_Region=="WPR", !is.na(fxbrnd.100)) %>% left_join() %>%  
+  ggplot(aes(year, fxbrnd.100, group=country)) + facet_wrap(~country) + geom_line(size=1) + labs(x="", y="Per 100 inhabitants", title="Fixed-broadband subscriptions, 2000-2017") + geom_point(size=1)
 
 
-# CO2 emissions (metric tons per capita)
 
 
-st <- 1990
-en <- 2014
-
-ind.name <- "co2.capita" 
-code <- "EN.ATM.CO2E.PC"
-ind.lab <- "CO2 emissions (metric tons per capita)"
-
-temp <- WDI(indicator = code, start = st, end = en, extra = TRUE, cache = NULL)
-temp <- temp %>% select(-c(capital,longitude, latitude, lending, region))
-names(temp) <- c("iso2", "country", "value", "year", "iso3", "income")
-temp$variable <- ind.name
-temp$lab <- ind.lab
-temp <- merge(temp, g_iso3, by="iso3")
-temp <- temp %>% filter(who_region=="WPR")
-
-co2.capita <- temp
-rm(temp)
 
 
-#########
-
-# N.ATM.CO2E.LF.KT
-
-# CO2 emissions from liquid fuel consumption (kt)
-
-
-co2.capita <- co2.capita %>% filter(!iso3=="ASM" & !iso3=="PYF" & !iso3=="GUM" &  !iso3=="MAC" & !iso3=="NCL" & !iso3=="MNP" & !iso3=="HKG") 
-
-p <- ggplot(co2.capita, aes(x=year, y=value, colour=lab))
-p <- p + geom_point(size=0.7, alpha=0.5)
-p <- p + geom_line() + facet_wrap( ~ country) #, scales="free"
-p <- p + geom_smooth(aes(x=year, y=value, fill=lab),  method = "lm",  alpha=0.20, size=0.4, linetype=0)
-p <- p + labs(title= "CO2 emissions in countries in WPR, 1990-2014", y = "metric tons per capita", x="", col="") 
-p <- p + theme(legend.position="bottom",
-               legend.text = element_text(size=10),
-               axis.text.x = element_text(size=7)) + guides(fill=FALSE, color =guide_legend(nrow=1,byrow=TRUE))
-p
-
-pdf(file="CO2 emissions in countries in WPR, 1990-2017.pdf", width=9, height=10) # write PDF
-p
-dev.off()
-
-
- # barplot using 2014 data
-
-co2.capita.14  <- co2.capita %>% filter(year==2014)
-
-p <- ggplot(co2.capita.14, aes(x=reorder(country,-value), y=value, fill=income))
-p <- p + geom_bar(stat="identity", alpha=0.7) 
-p <- p + labs(title= "CO2 emissions per capita in WPR countries, 2014", x = "", y="metric tons per capita", fill="Income classification") 
-p <- p + theme(#legend.title= element_text(size=9),
-  plot.title = element_text(size = 10),
-  axis.title=element_text(size=7),
-  axis.text.x = element_text(size = 7, angle=40, hjust = 1, vjust = 1),
-  legend.position = "bottom")
-p
-
-pdf(file="CO2 emissions per capita in WPR countries, 2014_bar.pdf", width=8,height=5.5) # write PDF
-p
-dev.off()
-
-
-#############
-
-ind.name <- "co2.fuel" 
-code <- "EN.ATM.CO2E.GF.ZS"
-ind.lab <- "CO2 emissions from gaseous fuel consumption (% of total)"
-
-temp <- WDI(indicator = code, start = st, end = en, extra = TRUE, cache = NULL)
-temp <- temp %>% select(-c(capital,longitude, latitude, lending, region))
-names(temp) <- c("iso2", "country", "value", "year", "iso3", "income")
-temp$variable <- ind.name
-temp$lab <- ind.lab
-temp <- merge(temp, g_iso3, by="iso3")
-temp <- temp %>% filter(who_region=="WPR")
-
-co2.fuel <- temp
-rm(temp)
-
-
-co2.fuel <- co2.fuel %>% filter(!iso3=="ASM" & !iso3=="PYF" & !iso3=="GUM" &  !iso3=="MAC" & !iso3=="NCL" & !iso3=="MNP" & !iso3=="HKG") 
-
-p <- ggplot(co2.fuel, aes(x=year, y=value, colour=lab))
-p <- p + geom_point(size=0.7, alpha=0.5)
-p <- p + geom_line() + facet_wrap( ~ country, scales="free") #, scales="free"
-p <- p + geom_smooth(aes(x=year, y=value, fill=lab),  method = "lm",  alpha=0.20, size=0.4, linetype=0)
-p <- p + labs(title= "CO2 emissions from gaseous fuel consumption in countries in WPR, 1990-2014", y = "% of total", x="", col="") 
-p <- p + theme(legend.position="bottom",
-               legend.text = element_text(size=10),
-               axis.text.x = element_text(size=7)) + guides(fill=FALSE, color =guide_legend(nrow=1,byrow=TRUE))
-p
-
-pdf(file="CO2 emissions from gaseous fuel consumption, 1990-2017.pdf", width=9, height=10) # write PDF
-p
-dev.off()
-
-# barplot using 2014 data
-
-co2.fuel.14  <- co2.fuel %>% filter(year==2014)
-
-p <- ggplot(co2.fuel.14, aes(x=reorder(country,-value), y=value, fill=income))
-p <- p + geom_bar(stat="identity", alpha=0.7) 
-p <- p + labs(title= "CO2 emissions from gaseous fuel consumption in WPR countries, 2014", x = "", y="% of total", fill="Income classification") 
-p <- p + theme(#legend.title= element_text(size=9),
-  plot.title = element_text(size = 10),
-  axis.title=element_text(size=7),
-  axis.text.x = element_text(size = 7, angle=40, hjust = 1, vjust = 1),
-  legend.position = "bottom")
-p
-
-pdf(file="CO2 emissions from gaseous fuel consumption in WPR countries, 2014_bar.pdf", width=8,height=5.5) # write PDF
-p
-dev.off()
 
 
 
