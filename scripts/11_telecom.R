@@ -15,9 +15,11 @@ library(tidyr)
 library(stringr)
 
 options(stringsAsFactors = FALSE)
-
-# telecom data
-# ITU summary indicators
+# ------------------------------------------
+# Telecom data
+# ------------------------------------------
+  
+# ---- ITU summary indicators ----
 ## Key ICT indicators for the ITU/BDT regions (totals and penetration rates)
 ## 2018 is estimated. 
 
@@ -66,6 +68,64 @@ itub %>% select(Region, year, ituc$code[5:7]) %>% gather(code, value, -Region, -
   ggplot(aes(year, value, color=Region, group=Region) ) + facet_wrap(~name, scales = "free_y", nrow=2) + geom_line(size=1) + labs(x="", y="%")
 
 
+# ---- Indicators by country ----
+# Fixed broadband data and telephone and mobile and internet
+dta1 <- read.xlsx("data/Telecom/Fixed_broadband_2000-2017.xls", 1, startRow = 2, colIndex = c(1, 21:38)) %>% rename(country=NA.) 
+names(dta1) <- str_replace(names(dta1), "X", "fixd.brnd:")
+
+dta2 <- read.xlsx("data/Telecom/Fixed_tel_2000-2017.xls", 1, startRow = 2, colIndex = c(1, 21:38)) %>% rename(country=NA.) 
+names(dta2) <- str_replace(names(dta2), "X", "fixd.tel:")
+
+dta3 <- read.xlsx("data/Telecom/Mobile_cellular_2000-2017.xls", 1, startRow = 2, colIndex = c(1, 21:38)) %>% rename(country=NA.) 
+names(dta3) <- str_replace(names(dta3), "X", "mob.tel:")
+
+dta4 <- read.xlsx("data/Telecom/Individuals_Internet_2000-2017.xls", 1, startRow = 2, colIndex = c(1:19)) %>% rename(country=NA.) 
+names(dta4) <- str_replace(names(dta4), "X", "indiv.internet:")
+
+dta <- dta1 %>% left_join(dta2) %>% left_join(dta3) %>% left_join(dta4)
+
+# Add in iso code
+dta$iso3 <- countrycode(dta$country, 'country.name.en', 'iso3c')
+
+## Fix countries countrycode can't handle
+dta[is.na(dta$iso3),"country"]
+dta[dta$country=="Central African Rep.", "iso3"] <- "CAF"
+dta[dta$country=="Eswatini", "iso3"] <- "SWZ"
+dta[dta$country=="Micronesia", "iso3"] <- "FSM"
+dta[dta$country=="Neth. Antilles", "iso3"] <- "ANT"
+dta[dta$country=="Ascension", "iso3"] <- "ASC"
+
+# Add in WHO regions and remove non-WHO
+# http://intranet.who.int/dev/refmartviewer/CustomViews/VIEW_CountryList
+country.list <- read.csv("data/CountryList.csv")
+
+dtb <- country.list %>% select(Title, iso3=ISO_Alpha3_Code_CODE, WHO_Region, WB_Income_Group) %>% inner_join(dta) %>% select(-country, country=Title) %>% filter(WHO_Region!="")
+
+
+# Reshape and calculate vars
+dtc <- dtb %>% 
+  gather(yr, value, -country, -iso3, -WHO_Region, -WB_Income_Group) %>%
+  separate(yr, c("var", "year"), sep=":", convert=TRUE) %>% left_join(ituc, by = c("var"="code")) %>% rename(Indicator=name)
+
+
+# Calculate by country in groups
+
+dtc %>% filter(WHO_Region=="WPR") %>% filter(WB_Income_Group=="HIC") %>%  
+  ggplot(aes(year, value, color=Indicator)) + facet_wrap(~country) + geom_line(size=1) + labs(x="", y="Subscriptions per 100 inhabitants or % of Individuals", title="Key ICT indicators, high-income countries, 2000-2017") + geom_point(size=1)
+
+dtc %>% filter(WHO_Region=="WPR") %>% filter(WB_Income_Group=="LMC") %>%  
+  ggplot(aes(year, value, color=Indicator)) + facet_wrap(~country) + geom_line(size=1) + labs(x="", y="Subscriptions per 100 inhabitants or % of Individuals", title="Key ICT indicators, lower middle-income countries, 2000-2017") + geom_point(size=1)
+
+dtc %>% filter(WHO_Region=="WPR") %>% filter(WB_Income_Group=="UMC") %>%  
+  ggplot(aes(year, value, color=Indicator)) + facet_wrap(~country) + geom_line(size=1) + labs(x="", y="Subscriptions per 100 inhabitants or % of Individuals", title="Key ICT indicators, upper middle-income countries, 2000-2017") + geom_point(size=1)
+
+
+# Mobile phone only
+dtc %>% filter(WHO_Region=="WPR") %>% filter(var=="mob.tel") %>%  
+  ggplot(aes(year, value, group=country)) + facet_wrap(~country) + geom_line(size=1) + labs(x="", y="Per 100 inhabitants", title="Mobile-cellular telephone subscriptions, 2000-2017") + geom_point(size=1)
+
+
+#### Previous code ####
 
 # Fixed broadband data
 dta <- read.xlsx("data/Telecom/Fixed_broadband_2000-2017.xls", 1, startRow = 2, colIndex = c(1:19,21:38)) %>% rename(country=NA.) 
@@ -104,13 +164,14 @@ reg.1 %>% summarise(fxbrnd=sum(fxbrnd, na.rm=T), pop=sum(pop, na.rm=T)) %>% muta
 reg.1 %>% bind_rows(reg.2) %>% 
   ggplot(aes(year, fxbrnd.100, color=WHO_Region)) + geom_line()
 
-dtc %>% filter(WHO_Region=="WPR", !is.na(fxbrnd.100)) %>% left_join() %>%  
-  ggplot(aes(year, fxbrnd.100, group=country)) + facet_wrap(~country) + geom_line(size=1) + labs(x="", y="Per 100 inhabitants", title="Fixed-broadband subscriptions, 2000-2017") + geom_point(size=1)
+dtc %>% filter(WHO_Region=="WPR", !is.na(fxbrnd.100)) %>% left_join(country.list, by = c("iso3" = "ISO_Alpha3_Code_CODE")) %>% filter(WB_Income_Group=="HIC") %>%  
+  ggplot(aes(year, fxbrnd.100, group=country)) + facet_wrap(~country) + geom_line(size=1) + labs(x="", y="Per 100 inhabitants", title="Fixed-broadband subscriptions, high-income countries, 2000-2017") + geom_point(size=1)
 
+dtc %>% filter(WHO_Region=="WPR", !is.na(fxbrnd.100)) %>% left_join(country.list, by = c("iso3" = "ISO_Alpha3_Code_CODE")) %>% filter(WB_Income_Group=="LMC") %>%  
+  ggplot(aes(year, fxbrnd.100, group=country)) + facet_wrap(~country) + geom_line(size=1) + labs(x="", y="Per 100 inhabitants", title="Fixed-broadband subscriptions, Lower middle-income countries, 2000-2017") + geom_point(size=1)
 
-
-
-
+dtc %>% filter(WHO_Region=="WPR", !is.na(fxbrnd.100)) %>% left_join(country.list, by = c("iso3" = "ISO_Alpha3_Code_CODE")) %>% filter(WB_Income_Group=="UMC") %>%  
+  ggplot(aes(year, fxbrnd.100, group=country)) + facet_wrap(~country) + geom_line(size=1) + labs(x="", y="Per 100 inhabitants", title="Fixed-broadband subscriptions, Upper middle-income countries, 2000-2017") + geom_point(size=1)
 
 
 
