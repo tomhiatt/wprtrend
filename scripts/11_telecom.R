@@ -108,7 +108,7 @@ dtc <- dtb %>%
   separate(yr, c("var", "year"), sep=":", convert=TRUE) %>% left_join(ituc, by = c("var"="code")) %>% rename(Indicator=name)
 
 
-# Calculate by country in groups
+# Display by country in groups
 
 dtc %>% filter(WHO_Region=="WPR") %>% filter(WB_Income_Group=="HIC") %>%  
   ggplot(aes(year, value, color=Indicator)) + facet_wrap(~country) + geom_line(size=1) + labs(x="", y="Subscriptions per 100 inhabitants or % of Individuals", title="Key ICT indicators, high-income countries, 2000-2017") + geom_point(size=1)
@@ -123,6 +123,18 @@ dtc %>% filter(WHO_Region=="WPR") %>% filter(WB_Income_Group=="UMC") %>%
 # Mobile phone only
 dtc %>% filter(WHO_Region=="WPR") %>% filter(var=="mob.tel") %>%  
   ggplot(aes(year, value, group=country)) + facet_wrap(~country) + geom_line(size=1) + labs(x="", y="Per 100 inhabitants", title="Mobile-cellular telephone subscriptions, 2000-2017") + geom_point(size=1)
+
+# Internet only
+int1 <- dtc %>% filter(WHO_Region=="WPR") %>% filter(var=="indiv.internet") 
+int2 <- int1 %>% filter(!is.na(value)) %>% group_by(country) %>% summarize(year=max(year), val=max(value))
+int3 <- int1 %>% filter(!is.na(value)) %>% group_by(country) %>% summarize(year=min(year), val=min(value)) %>% bind_rows(int2)
+
+int1 %>%  
+  ggplot(aes(year, value, color=country)) + geom_line(size=1) + labs(x="", y="%", title="Individuals using the Internet, 2000-2017") + geom_point(size=0)  + geom_label_repel(aes(year, val, label=country), data=int2)  + theme(legend.position="none")
+
+int3 %>%  
+  ggplot(aes(year, val, color=country)) + geom_line(size=1) + labs(x="", y="%", title="Individuals using the Internet, 2000-2017") + geom_point(size=0)  + geom_label_repel(aes(year, val, label=country), data=int2) + theme(legend.position="none")
+
 
 
 #### Previous code ####
